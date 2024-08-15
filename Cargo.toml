@@ -1,9 +1,9 @@
 [package]
-name = "env-guard"
+name = "env-lock"
 description = "Set and lock environment variables for tests"
 version = "0.1.0"
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
-repository = "https://github.com/LucasPickering/env-guard"
+repository = "https://github.com/LucasPickering/env-lock"
 edition = "2021"
 license = "MIT"
 # Keep in sync w/ rust-toolchain.toml
