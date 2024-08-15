@@ -1,18 +1,21 @@
-# rust-config
+# env-guard
 
-Common CI and crate configuration for my Rust projects. This is meant to be pulled in as a separate git remote in your repo.
+![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
+![crates.io](https://img.shields.io/crates/v/env-guard.svg)
+![docs.rs](https://img.shields.io/docsrs/env-guard)
 
-Initial setup for a repo:
+A process's environment is a form of global mutable state. In Rust, tests are run in a shared process. This means tests that modify environment variables can inadvertently affect each other. `env-guard` provides an interface to safely modify and lock the process environment, to prevent simultaneous access.
 
-```
-git remote add ci git@github.com:LucasPickering/rust-config.git
-git fetch ci
-git cherry-pick ci/master
-```
+```rust
+use env_guard::EnvGuard;
+use std::env;
 
-Pulling in new chains:
+let var = "ENV_GUARD_TEST_VARIABLE";
+assert!(env::var(var).is_err());
 
-```
-git fetch ci
-git merge ci/master
+let guard = EnvGuard::lock([(var, Some("hello!"))]);
+assert_eq!(env::var(var).unwrap(), "hello!");
+drop(guard);
+
+assert!(env::var(var).is_err());
 ```
