@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Don't panic on subsequent tests after one test fails
+
 ## [0.1.1] - 2024-08-15
 
 Downgrade MSRV to 1.70

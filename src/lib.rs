@@ -26,6 +26,11 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
+/// Global mutex for accessing environment variables. Technically we could break
+/// this out into a map with one mutex per variable, but that adds a ton of
+/// complexity for very little value.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
 /// Lock the environment and set each given variable to its corresponding
 /// value. If the environment is already locked, this will block until the lock
 /// can be acquired. The returned guard will keep the environment locked so the
@@ -42,12 +47,10 @@ use std::{
 pub fn lock_env<'a>(
     variables: impl IntoIterator<Item = (&'a str, Option<impl AsRef<str>>)>,
 ) -> EnvGuard<'a> {
-    /// Global mutex for accessing environment variables. Technically we
-    /// could break this out into a map with one mutex per variable, but
-    /// that adds a ton of complexity for very little value.
-    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+    // We can ignore poison errors, because the Drop impl for EnvGuard restores
+    // the environment on panic
+    let guard = ENV_MUTEX.lock().unwrap_or_else(|error| error.into_inner());
 
-    let guard = ENV_MUTEX.lock().expect("Environment lock is poisoned");
     let previous_values = variables
         .into_iter()
         .map(|(variable, new_value)| {
@@ -94,6 +97,7 @@ impl<'a> Drop for EnvGuard<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic;
 
     // NOTE: Because these tests specifically modify environment variables
     // *outside* the env lock, they each need to use a different variable. If
@@ -138,5 +142,26 @@ mod tests {
         drop(guard);
 
         assert_eq!(env::var(var).unwrap(), "existing");
+    }
+
+    /// Environment should be restored correctly if a panic occurs while it's
+    /// held. This is important behavior because tests have a tendency to panic
+    #[test]
+    fn reset_on_panic() {
+        let var = "ENV_LOCK_TEST_VARIABLE_RESET_ON_PANIC";
+        env::set_var(var, "default");
+        panic::catch_unwind(|| {
+            let _guard = lock_env([(var, Some("panicked!"))]);
+            assert_eq!(env::var(var).unwrap(), "panicked!");
+            panic!("oh no!");
+        })
+        .unwrap_err();
+
+        // Previous state was restored
+        assert_eq!(env::var(var).unwrap(), "default");
+
+        // Should be able to reacquire the lock no problem
+        let _guard = lock_env([(var, Some("very calm"))]);
+        assert_eq!(env::var(var).unwrap(), "very calm");
     }
 }
