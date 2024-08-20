@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/env-lock.svg)](https://crates.io/crates/env-lock)
 [![docs.rs](https://img.shields.io/docsrs/env-lock)](https://docs.rs/env-lock)
 
-A process's environment is a form of global mutable state. In Rust, tests are run in a shared process. This means tests that modify environment variables can inadvertently affect each other. `env-lock` provides an interface to safely modify and lock the process environment, to prevent simultaneous access.
+A process's environment is a form of global mutable state. In Rust, tests are run in a shared process. This means tests that modify environment variables can inadvertently affect each other. `env-lock` provides a simple interface to safely modify and lock the process environment, to prevent simultaneous access. This provides two forms of isolation: isolation from the external environment, and isolation _between_ tests that read/modify the environment.
 
 ```rust
 use std::env;
