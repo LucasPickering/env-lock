@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `lock_current_dir` function to set and lock the current working directory for a process
+
 ## [0.1.2] - 2024-08-19
 
 ### Fixed
