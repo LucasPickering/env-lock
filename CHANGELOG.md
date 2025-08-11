@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.0.1] - 2025-08-11
+
 ### Fixed
 
 - Acquire cwd lock before reading its previous value. This prevents some race conditions and interactions between tests
