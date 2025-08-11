@@ -6,8 +6,7 @@
 //! same time.
 //!
 //! ```
-//! use std::env;
-//!
+//! # use std::env;
 //! let var = "ENV_LOCK_TEST_VARIABLE";
 //! assert!(env::var(var).is_err());
 //!
@@ -17,12 +16,27 @@
 //!
 //! assert!(env::var(var).is_err());
 //! ```
+//!
+//! You can also lock the current working directory, which is another form of
+//! mutable global state.
+//!
+//! ```
+//! # use std::{env, path::Path};
+//! let old_dir = env::current_dir().unwrap();
+//! let new_dir = old_dir.parent().unwrap();
+//! let guard = env_lock::lock_current_dir(new_dir).unwrap();
+//! assert_eq!(env::current_dir().unwrap(), new_dir);
+//! drop(guard);
+//!
+//! assert_eq!(env::current_dir().unwrap(), old_dir);
+//! ```
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
 use std::{
-    env,
+    env, io,
+    path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
 };
 
@@ -30,6 +44,8 @@ use std::{
 /// this out into a map with one mutex per variable, but that adds a ton of
 /// complexity for very little value.
 static ENV_MUTEX: Mutex<()> = Mutex::new(());
+/// Global mutex for modifying the current working directory
+static CURRENT_DIR_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Lock the environment and set each given variable to its corresponding
 /// value. If the environment is already locked, this will block until the lock
@@ -94,6 +110,49 @@ impl<'a> Drop for EnvGuard<'a> {
     }
 }
 
+/// Set the working directory for the current process. The working directory is
+/// a form of global mutable state, so this use a mutex to ensure that only one
+/// mutation can be made at a time. This returns a guard that, when dropped,
+/// will revert the working directory to its previous value and release the lock
+/// on it.
+///
+/// ## Errors
+///
+/// Return an error if either [current_dir](env::current_dir) or
+/// [set_current_dir](env::set_current_dir) fails. See those two functions for
+/// failure conditions. In either case, the current directory will *not* be
+/// modified and its mutex will remain unlocked.
+pub fn lock_current_dir(
+    dir: impl AsRef<Path>,
+) -> Result<CurrentDirGuard, io::Error> {
+    let previous_dir = env::current_dir()?;
+    // We can ignore poison errors, because the Drop impl for EnvGuard restores
+    // the environment on panic
+    let guard = CURRENT_DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    env::set_current_dir(dir)?;
+    Ok(CurrentDirGuard {
+        previous_dir,
+        guard,
+    })
+}
+
+/// A guard used to indicate that the current working directory is locked.
+/// Returned by [lock_current_dir]. This will restore and unlock the working
+/// directory on drop.
+pub struct CurrentDirGuard {
+    previous_dir: PathBuf,
+    #[allow(unused)]
+    guard: MutexGuard<'static, ()>,
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        let _ = env::set_current_dir(&self.previous_dir);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,7 +206,7 @@ mod tests {
     /// Environment should be restored correctly if a panic occurs while it's
     /// held. This is important behavior because tests have a tendency to panic
     #[test]
-    fn reset_on_panic() {
+    fn env_reset_on_panic() {
         let var = "ENV_LOCK_TEST_VARIABLE_RESET_ON_PANIC";
         env::set_var(var, "default");
         panic::catch_unwind(|| {
@@ -163,5 +222,26 @@ mod tests {
         // Should be able to reacquire the lock no problem
         let _guard = lock_env([(var, Some("very calm"))]);
         assert_eq!(env::var(var).unwrap(), "very calm");
+    }
+
+    /// Current dir should be restored correctly if a panic occurs while it's
+    /// held. This is important behavior because tests have a tendency to panic
+    #[test]
+    fn current_dir_reset_on_panic() {
+        let current_dir = env::current_dir().unwrap();
+        let new_dir = current_dir.parent().unwrap();
+        panic::catch_unwind(|| {
+            let _guard = lock_current_dir(new_dir).unwrap();
+            assert_eq!(env::current_dir().unwrap(), new_dir);
+            panic!("oh no!");
+        })
+        .unwrap_err();
+
+        // Previous state was restored
+        assert_eq!(env::current_dir().unwrap(), current_dir);
+
+        // Should be able to reacquire the lock no problem
+        let _guard = lock_current_dir(new_dir);
+        assert_eq!(env::current_dir().unwrap(), new_dir);
     }
 }
