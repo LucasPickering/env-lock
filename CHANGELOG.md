@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Acquire cwd lock before reading its previous value. This prevents some race conditions and interactions between tests
+- Add `CurrentDirError` wrapper for `lock_current_dir` to provide more context for failures
+
 ## [1.0.0] - 2025-08-11
 
 ### Added

@@ -35,7 +35,10 @@
 #![deny(clippy::all)]
 
 use std::{
-    env, io,
+    env,
+    error::Error,
+    fmt::{self, Display},
+    io,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
 };
@@ -124,14 +127,16 @@ impl<'a> Drop for EnvGuard<'a> {
 /// modified and its mutex will remain unlocked.
 pub fn lock_current_dir(
     dir: impl AsRef<Path>,
-) -> Result<CurrentDirGuard, io::Error> {
-    let previous_dir = env::current_dir()?;
+) -> Result<CurrentDirGuard, CurrentDirError> {
     // We can ignore poison errors, because the Drop impl for EnvGuard restores
     // the environment on panic
     let guard = CURRENT_DIR_MUTEX
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    env::set_current_dir(dir)?;
+    // Acquire the lock before checking the current value to make sure it isn't
+    // modified by other tests
+    let previous_dir = env::current_dir().map_err(CurrentDirError::Get)?;
+    env::set_current_dir(dir).map_err(CurrentDirError::Set)?;
     Ok(CurrentDirGuard {
         previous_dir,
         guard,
@@ -150,6 +155,40 @@ pub struct CurrentDirGuard {
 impl Drop for CurrentDirGuard {
     fn drop(&mut self) {
         let _ = env::set_current_dir(&self.previous_dir);
+    }
+}
+
+/// Context for an error that can occur while locking the current directory.
+/// Both the get and the set can fail; this error tells you which one failed.
+/// Use [Error::source] to get the underlying error.
+#[derive(Debug)]
+pub enum CurrentDirError {
+    /// Error while getting the current directory. The current directory must
+    /// be fetched before it's modified so we know what value to revert to.
+    Get(io::Error),
+    /// Error while setting the current directory
+    Set(io::Error),
+}
+
+impl Display for CurrentDirError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Get(_) => {
+                write!(f, "getting current directory")
+            }
+            Self::Set(_) => {
+                write!(f, "setting current directory")
+            }
+        }
+    }
+}
+
+impl Error for CurrentDirError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Get(err) => Some(err),
+            Self::Set(err) => Some(err),
+        }
     }
 }
 
