@@ -94,6 +94,7 @@ pub fn lock_env<'a>(
 /// A guard used to indicate that the current process environment is locked.
 /// Returned by [lock_env]. This will restore and unlock the environment on
 /// drop.
+#[must_use = "Environment is unlocked when guard is dropped"]
 pub struct EnvGuard<'a> {
     previous_values: Vec<(&'a str, Option<String>)>,
     #[allow(unused)]
